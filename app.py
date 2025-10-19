@@ -4,41 +4,34 @@ from flask import Flask, render_template, request, redirect, url_for, session, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
+# ------------------ App Setup ------------------
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-very-secret-key-change-this'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-very-secret-key-change-this')
 app.config['DATABASE'] = 'hostel.db'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'mp3', 'wav'}
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB upload limit
 
-# Create upload folder if missing
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
 
-# ---------- Helper Functions ----------
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-
+# ------------------ Database Helpers ------------------
 def get_db():
-    db = getattr(g, '_database', None)
-    if db is None:
-        db = g._database = sqlite3.connect(app.config['DATABASE'])
-        db.row_factory = sqlite3.Row
-    return db
+    if 'db' not in g:
+        g.db = sqlite3.connect(app.config['DATABASE'])
+        g.db.row_factory = sqlite3.Row
+    return g.db
 
 
 @app.teardown_appcontext
-def close_connection(exception):
-    db = getattr(g, '_database', None)
+def close_db(exception=None):
+    db = g.pop('db', None)
     if db is not None:
         db.close()
 
 
 def init_db():
-    """Initialize database tables."""
     schema = """
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +60,7 @@ def init_db():
 
 
 def ensure_warden_exists():
-    """Ensure warden account is created."""
+    """Ensure warden account is created after DB init."""
     db = get_db()
     warden_pass = generate_password_hash('CUWARDEN')
     db.execute("""
@@ -77,10 +70,27 @@ def ensure_warden_exists():
     db.commit()
 
 
-# Initialize database and ensure warden exists
+# Initialize DB safely inside app context
 with app.app_context():
     init_db()
     ensure_warden_exists()
+
+
+# ------------------ Cache Control (Fixes Buffering) ------------------
+@app.after_request
+def add_cache_headers(response):
+    """
+    Prevents excessive reloading and buffering when using the browser's back button.
+    """
+    response.headers["Cache-Control"] = "public, max-age=120"
+    response.headers["Pragma"] = "cache"
+    response.headers["Expires"] = "120"
+    return response
+
+
+# ------------------ Utility Functions ------------------
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 
 def get_user_by_id(user_id):
@@ -88,27 +98,25 @@ def get_user_by_id(user_id):
     return db.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
 
 
-# ---------- General Routes ----------
-
+# ------------------ Routes ------------------
 @app.route('/')
 def index():
     return render_template('index.html')
 
 
-# ---------- Student Routes ----------
-
+# --- Student Registration/Login ---
 @app.route('/student/register', methods=['GET', 'POST'])
 def student_register():
     if request.method == 'POST':
         name = request.form['name']
         email = request.form['email']
         password = request.form['password']
-        hashed_password = generate_password_hash(password)
+        hashed = generate_password_hash(password)
 
         db = get_db()
         try:
             db.execute('INSERT INTO users (name, email, password, is_warden) VALUES (?, ?, ?, 0)',
-                       (name, email, hashed_password))
+                       (name, email, hashed))
             db.commit()
             flash('Registration successful! Please login.', 'success')
             return redirect(url_for('student_login'))
@@ -125,14 +133,12 @@ def student_login():
 
         db = get_db()
         user = db.execute('SELECT * FROM users WHERE email = ? AND is_warden = 0', (email,)).fetchone()
-
         if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             session['user_name'] = user['name']
             session['is_warden'] = False
             return redirect(url_for('student_dashboard'))
-        else:
-            flash('Invalid email or password.', 'error')
+        flash('Invalid email or password.', 'error')
     return render_template('student_login.html')
 
 
@@ -153,21 +159,18 @@ def add_complaint():
         category = request.form['category']
         description = request.form['description']
         proof_file = request.files.get('proof')
-
         filename = None
-        if proof_file and proof_file.filename and allowed_file(proof_file.filename):
+        if proof_file and allowed_file(proof_file.filename):
             filename = secure_filename(proof_file.filename)
             proof_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-
         db = get_db()
         db.execute(
             'INSERT INTO complaints (student_id, title, category, description, proof_file) VALUES (?, ?, ?, ?, ?)',
             (session['user_id'], title, category, description, filename)
         )
         db.commit()
-        flash(f"Complaint '{title}' submitted successfully!", 'success')
+        flash('Complaint submitted successfully!', 'success')
         return redirect(url_for('my_complaints'))
-
     return render_template('add_complaint.html')
 
 
@@ -175,7 +178,6 @@ def add_complaint():
 def my_complaints():
     if 'user_id' not in session or session.get('is_warden'):
         return redirect(url_for('student_login'))
-
     db = get_db()
     complaints = db.execute(
         'SELECT * FROM complaints WHERE student_id = ? ORDER BY created_at DESC',
@@ -194,48 +196,40 @@ def student_profile():
     if 'user_id' not in session or session.get('is_warden'):
         return redirect(url_for('student_login'))
 
-    user_id = session['user_id']
     db = get_db()
-
+    user = get_user_by_id(session['user_id'])
     if request.method == 'POST':
         name = request.form['name']
         email = request.form['email']
         password = request.form.get('password')
-
         if password:
-            hashed_password = generate_password_hash(password)
-            db.execute('UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?',
-                       (name, email, hashed_password, user_id))
+            hashed = generate_password_hash(password)
+            db.execute('UPDATE users SET name=?, email=?, password=? WHERE id=?',
+                       (name, email, hashed, user['id']))
         else:
-            db.execute('UPDATE users SET name = ?, email = ? WHERE id = ?',
-                       (name, email, user_id))
+            db.execute('UPDATE users SET name=?, email=? WHERE id=?',
+                       (name, email, user['id']))
         db.commit()
         session['user_name'] = name
         flash('Profile updated successfully!', 'success')
         return redirect(url_for('student_profile'))
-
-    user = get_user_by_id(user_id)
     return render_template('profile.html', user=user, title="Student Profile")
 
 
-# ---------- Warden Routes ----------
-
+# --- Warden ---
 @app.route('/warden/login', methods=['GET', 'POST'])
 def warden_login():
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
-
         db = get_db()
-        user = db.execute('SELECT * FROM users WHERE email = ? AND is_warden = 1', (email,)).fetchone()
-
+        user = db.execute('SELECT * FROM users WHERE email=? AND is_warden=1', (email,)).fetchone()
         if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             session['user_name'] = user['name']
             session['is_warden'] = True
             return redirect(url_for('warden_dashboard'))
-        else:
-            flash('Invalid email or password.', 'error')
+        flash('Invalid email or password.', 'error')
     return render_template('warden_login.html')
 
 
@@ -243,32 +237,25 @@ def warden_login():
 def warden_dashboard():
     if 'user_id' not in session or not session.get('is_warden'):
         return redirect(url_for('warden_login'))
-
     db = get_db()
     complaints = db.execute("""
-        SELECT c.*, u.name as student_name 
-        FROM complaints c
+        SELECT c.*, u.name AS student_name FROM complaints c
         JOIN users u ON c.student_id = u.id
         ORDER BY c.created_at DESC
     """).fetchall()
-
-    new_complaints_count = db.execute(
-        "SELECT COUNT(*) FROM complaints WHERE status = 'Pending'"
-    ).fetchone()[0]
-
-    return render_template('warden_dashboard.html', complaints=complaints, new_count=new_complaints_count)
+    new_count = db.execute("SELECT COUNT(*) FROM complaints WHERE status='Pending'").fetchone()[0]
+    return render_template('warden_dashboard.html', complaints=complaints, new_count=new_count)
 
 
 @app.route('/warden/update_status/<int:id>', methods=['POST'])
 def update_status(id):
     if 'user_id' not in session or not session.get('is_warden'):
         return redirect(url_for('warden_login'))
-
-    new_status = request.form['status']
+    status = request.form['status']
     db = get_db()
-    db.execute('UPDATE complaints SET status = ? WHERE id = ?', (new_status, id))
+    db.execute('UPDATE complaints SET status=? WHERE id=?', (status, id))
     db.commit()
-    flash('Complaint status updated.', 'success')
+    flash('Status updated.', 'success')
     return redirect(url_for('warden_dashboard'))
 
 
@@ -276,10 +263,9 @@ def update_status(id):
 def add_remark(id):
     if 'user_id' not in session or not session.get('is_warden'):
         return redirect(url_for('warden_login'))
-
     remark = request.form['remark']
     db = get_db()
-    db.execute('UPDATE complaints SET remark = ? WHERE id = ?', (remark, id))
+    db.execute('UPDATE complaints SET remark=? WHERE id=?', (remark, id))
     db.commit()
     flash('Remark added successfully.', 'success')
     return redirect(url_for('warden_dashboard'))
@@ -289,68 +275,54 @@ def add_remark(id):
 def warden_analytics():
     if 'user_id' not in session or not session.get('is_warden'):
         return redirect(url_for('warden_login'))
-
     db = get_db()
     status_data = db.execute("SELECT status, COUNT(*) as count FROM complaints GROUP BY status").fetchall()
     status_counts = {'Pending': 0, 'In Progress': 0, 'Resolved': 0}
-
     for row in status_data:
         if row['status'] in status_counts:
             status_counts[row['status']] = row['count']
-
-    total_complaints = sum(status_counts.values())
-
+    total = sum(status_counts.values())
     category_data = db.execute("SELECT category, COUNT(*) as count FROM complaints GROUP BY category").fetchall()
-    categories = [row['category'] for row in category_data]
-    category_counts = [row['count'] for row in category_data]
-
-    return render_template(
-        'analytics.html',
-        status_counts=status_counts,
-        total_complaints=total_complaints,
-        categories=categories,
-        category_counts=category_counts
-    )
+    categories = [r['category'] for r in category_data]
+    category_counts = [r['count'] for r in category_data]
+    return render_template('analytics.html',
+                           status_counts=status_counts,
+                           total_complaints=total,
+                           categories=categories,
+                           category_counts=category_counts)
 
 
 @app.route('/warden/profile', methods=['GET', 'POST'])
 def warden_profile():
     if 'user_id' not in session or not session.get('is_warden'):
         return redirect(url_for('warden_login'))
-
-    user_id = session['user_id']
     db = get_db()
-
+    user = get_user_by_id(session['user_id'])
     if request.method == 'POST':
         name = request.form['name']
         email = request.form['email']
         password = request.form.get('password')
-
         if password:
-            hashed_password = generate_password_hash(password)
-            db.execute('UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?',
-                       (name, email, hashed_password, user_id))
+            hashed = generate_password_hash(password)
+            db.execute('UPDATE users SET name=?, email=?, password=? WHERE id=?',
+                       (name, email, hashed, user['id']))
         else:
-            db.execute('UPDATE users SET name = ?, email = ? WHERE id = ?',
-                       (name, email, user_id))
+            db.execute('UPDATE users SET name=?, email=? WHERE id=?',
+                       (name, email, user['id']))
         db.commit()
         session['user_name'] = name
         flash('Profile updated successfully!', 'success')
         return redirect(url_for('warden_profile'))
-
-    user = get_user_by_id(user_id)
     return render_template('profile.html', user=user, title="Warden Profile")
 
-
-# ---------- Logout ----------
 
 @app.route('/logout')
 def logout():
     session.clear()
+    flash("Logged out successfully.", "info")
     return redirect(url_for('index'))
 
 
-# ---------- Run App ----------
-
+# ------------------ Run App ------------------
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
