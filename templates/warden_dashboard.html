@@ -1,1 +1,0 @@
-<h2>Warden Dashboard</h2><p>Pending complaints: {{ pending_count }}</p><ul>{% for c in complaints %}<li>{{ c.title }} - {{ c.status }} <a href='/warden/complaint/{{ c.id }}/update'>Update</a></li>{% endfor %}</ul>
