@@ -21,12 +21,9 @@
                     <div class="complaint-header">
                         <h3>{{ complaint.title }} <span class="badge badge-{{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status }}</span></h3>
                         <span class="complaint-meta">Category: {{ complaint.category }}</span>
-                        <span class="complaint-meta">Submitted: {{ complaint.created_at.split(' ')[0] }}</span>
+                        <span class="complaint-meta">Submitted: {{ complaint.created_at.strftime('%Y-%m-%d') }}</span>
                     </div>
                     <p>{{ complaint.description }}</p>
-                    {% if complaint.proof_file %}
-                        <p><strong>Proof:</strong> <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View Proof</a></p>
-                    {% endif %}
                     {% if complaint.remark %}
                         <div class="warden-remark">
                             <strong>Warden's Remark:</strong>
