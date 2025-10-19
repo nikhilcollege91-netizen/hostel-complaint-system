@@ -13,53 +13,155 @@
 </nav>
 
 <div class="container">
-    <h2>📋 My Submitted Complaints</h2>
+    <h2 class="page-title">📋 My Submitted Complaints</h2>
+
+    {% if complaints %}
     <div class="complaint-list">
-        {% if complaints %}
-            {% for complaint in complaints %}
-                <div class="card complaint-card">
-                    <div class="complaint-header">
-                        <h3>{{ complaint.title }} <span class="badge badge-{{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status }}</span></h3>
-                        <span class="complaint-meta">Category: {{ complaint.category }}</span>
-                        <span class="complaint-meta">Submitted: {{ complaint.created_at.split(' ')[0] }}</span>
-                    </div>
-                    <p>{{ complaint.description }}</p>
+        {% for complaint in complaints %}
+        <div class="complaint-card">
+            <div class="complaint-header">
+                <h3 class="complaint-title">{{ complaint.title }}</h3>
+                <span class="badge badge-{{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status }}</span>
+            </div>
 
-                    {% if complaint.proof_file %}
-                        {% set ext = complaint.proof_file.split('.')[-1].lower() %}
-                        <p><strong>Proof:</strong>
-                            {% if ext in ['png', 'jpg', 'jpeg', 'gif'] %}
-                                <br>
-                                <img src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" alt="Proof Image" width="200" style="margin-top:5px; border-radius:6px;">
-                            {% elif ext in ['mp4', 'mov'] %}
-                                <br>
-                                <video width="300" controls style="margin-top:5px; border-radius:6px;">
-                                    <source src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" type="video/{{ ext }}">
-                                    Your browser does not support the video tag.
-                                </video>
-                            {% elif ext in ['mp3', 'wav'] %}
-                                <br>
-                                <audio controls style="margin-top:5px; width: 300px;">
-                                    <source src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" type="audio/{{ ext }}">
-                                    Your browser does not support the audio element.
-                                </audio>
-                            {% else %}
-                                <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View Proof</a>
-                            {% endif %}
-                        </p>
-                    {% endif %}
+            <div class="complaint-info">
+                <p><strong>Category:</strong> {{ complaint.category }}</p>
+                <p><strong>Submitted on:</strong> {{ complaint.created_at.split(' ')[0] }}</p>
+            </div>
 
-                    {% if complaint.remark %}
-                        <div class="warden-remark">
-                            <strong>Warden's Remark:</strong>
-                            <p>{{ complaint.remark }}</p>
-                        </div>
-                    {% endif %}
+            <p class="complaint-description">{{ complaint.description }}</p>
+
+            {% if complaint.proof_file %}
+            <div class="complaint-proof">
+                <p><strong>Proof:</strong></p>
+                {% set ext = complaint.proof_file.split('.')[-1].lower() %}
+                {% if ext in ['png', 'jpg', 'jpeg', 'gif'] %}
+                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank" class="view-proof-btn">🖼️ View Image</a>
+                {% elif ext in ['mp4', 'mov'] %}
+                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank" class="view-proof-btn">🎥 View Video</a>
+                {% elif ext in ['mp3', 'wav', 'm4a', 'aac'] %}
+                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank" class="view-proof-btn">🎧 Listen Proof</a>
+                {% else %}
+                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank" class="view-proof-btn">📁 View Proof</a>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if complaint.remark %}
+            <div class="warden-remark">
+                <strong>Warden's Remark:</strong>
+                <div class="remark-box">
+                    {{ complaint.remark }}
                 </div>
-            {% endfor %}
-        {% else %}
-            <p>You have not submitted any complaints yet.</p>
-        {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
     </div>
+    {% else %}
+    <p class="no-complaints">You haven’t submitted any complaints yet.</p>
+    {% endif %}
 </div>
+
+<style>
+    .page-title {
+        text-align: center;
+        font-weight: 700;
+        margin-bottom: 25px;
+        color: #222;
+    }
+
+    .complaint-list {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .complaint-card {
+        background: #fff;
+        padding: 20px;
+        border-radius: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: 0.3s ease;
+    }
+
+    .complaint-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+    }
+
+    .complaint-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .complaint-title {
+        font-size: 1.3em;
+        font-weight: 600;
+    }
+
+    .complaint-info p {
+        margin: 3px 0;
+        color: #555;
+    }
+
+    .complaint-description {
+        margin: 10px 0;
+        color: #333;
+        line-height: 1.5;
+    }
+
+    .badge {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        color: #fff;
+        font-weight: 600;
+        text-transform: capitalize;
+    }
+
+    .badge-pending { background-color: #f4b400; }
+    .badge-in-progress { background-color: #4285f4; }
+    .badge-resolved { background-color: #34a853; }
+
+    .view-proof-btn {
+        display: inline-block;
+        background: #2563eb;
+        color: #fff;
+        padding: 8px 14px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-size: 0.9em;
+        transition: background 0.2s;
+    }
+
+    .view-proof-btn:hover {
+        background: #1e40af;
+    }
+
+    .warden-remark {
+        margin-top: 15px;
+        background: #f9fafb;
+        border-left: 4px solid #2563eb;
+        padding: 10px 12px;
+        border-radius: 6px;
+    }
+
+    .remark-box {
+        margin-top: 6px;
+        background: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        color: #333;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    .no-complaints {
+        text-align: center;
+        color: #666;
+        margin-top: 40px;
+    }
+</style>
 {% endblock %}
