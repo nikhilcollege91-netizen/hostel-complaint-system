@@ -1,5 +1,5 @@
-flask
-flask_sqlalchemy
-flask_login
-werkzeug
+Flask
 gunicorn
+psycopg2-binary
+dj-database-url
+werkzeug
