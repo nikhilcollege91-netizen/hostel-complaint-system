@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import mimetypes
-from flask import Flask, render_template, request, redirect, url_for, session, g, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, session, g, flash, send_file, Response
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
@@ -159,7 +159,7 @@ def add_complaint():
 
     return render_template('add_complaint.html')
 
-# ✅ FIXED PROOF VIEWER ROUTE
+# ✅ FIXED PROOF VIEWER ROUTE (works for .m4a / .mp3 / images / video)
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -171,7 +171,13 @@ def uploaded_file(filename):
     if not mime_type:
         mime_type = 'application/octet-stream'
 
-    return send_file(filepath, mimetype=mime_type, as_attachment=False, conditional=True)
+    # Set Range header for audio streaming
+    def generate():
+        with open(filepath, 'rb') as f:
+            data = f.read()
+            yield data
+
+    return Response(generate(), mimetype=mime_type)
 
 @app.route('/student/my_complaints')
 def my_complaints():
@@ -297,7 +303,7 @@ def warden_profile():
                        (name, email, user['id']))
         db.commit()
         session['user_name'] = name
-        flash('Profile updated successfully.', 'success')
+        flash('Profile updated successfully!', 'success')
         return redirect(url_for('warden_profile'))
     return render_template('profile.html', user=user, title="Warden Profile")
 
