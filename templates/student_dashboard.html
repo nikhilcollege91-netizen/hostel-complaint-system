@@ -5,7 +5,7 @@
     <div class="nav-container">
         <a class="nav-brand" href="{{ url_for('student_dashboard') }}">Student Portal</a>
         <ul class="nav-links">
-            <li><a href="{{ url_for('student_profile') }}">👤 Profile</a></li>
+            <li><a href="{{ url_for('profile') }}">👤 Profile</a></li>
             <li><a href="{{ url_for('logout') }}">🚪 Logout</a></li>
         </ul>
     </div>
@@ -22,7 +22,7 @@
             <h3>📋 My Complaints</h3>
             <p>View the status of all your submitted complaints.</p>
         </a>
-        <a href="{{ url_for('student_profile') }}" class="card anim-card">
+        <a href="{{ url_for('profile') }}" class="card anim-card">
             <h3>👤 My Profile</h3>
             <p>Update your personal information and password.</p>
         </a>
