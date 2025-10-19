@@ -42,7 +42,26 @@
                         <td><p class="description-cell">{{ complaint.description }}</p></td>
                         <td>
                             {% if complaint.proof_file %}
-                                <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View</a>
+                                {% set ext = complaint.proof_file.split('.')[-1].lower() %}
+                                
+                                {% if ext in ['png', 'jpg', 'jpeg', 'gif'] %}
+                                    <img src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" alt="Proof Image" width="120" style="border-radius:6px; margin-top:5px;">
+                                
+                                {% elif ext in ['mp4', 'mov'] %}
+                                    <video width="200" controls style="border-radius:6px; margin-top:5px;">
+                                        <source src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" type="video/{{ ext }}">
+                                        Your browser does not support the video tag.
+                                    </video>
+
+                                {% elif ext in ['mp3', 'wav'] %}
+                                    <audio controls style="width:200px; margin-top:5px;">
+                                        <source src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" type="audio/{{ ext }}">
+                                        Your browser does not support the audio element.
+                                    </audio>
+                                
+                                {% else %}
+                                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View</a>
+                                {% endif %}
                             {% else %}
                                 N/A
                             {% endif %}
