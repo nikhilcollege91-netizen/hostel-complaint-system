@@ -1,29 +1,37 @@
 import os
-import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, session, g, flash, jsonify
+import psycopg2
+import dj_database_url
+from psycopg2.extras import DictCursor
+from flask import Flask, render_template, request, redirect, url_for, session, g, flash
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-very-secret-key-change-this'
-app.config['DATABASE'] = 'hostel.db'
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'mp3', 'wav'}
 
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-# --- Database Setup ---
+# --- New Database Setup (PostgreSQL) ---
+# This will get the connection string you set in Render's Environment
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL is None:
+    print("FATAL: DATABASE_URL environment variable is not set.")
+    # You might want to raise an exception here or set a default for local testing
+    # For now, we'll just print, but Render *must* have this set.
 
 def get_db():
     db = getattr(g, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(app.config['DATABASE'])
-        db.row_factory = sqlite3.Row
+        try:
+            db_info = dj_database_url.parse(DATABASE_URL)
+            db = g._database = psycopg2.connect(
+                dbname=db_info['NAME'],
+                user=db_info['USER'],
+                password=db_info['PASSWORD'],
+                host=db_info['HOST'],
+                port=db_info['PORT']
+            )
+            db.autocommit = True
+        except Exception as e:
+            print(f"Error connecting to database: {e}")
+            return None
     return db
 
 @app.teardown_appcontext
@@ -33,75 +41,63 @@ def close_connection(exception):
         db.close()
 
 def init_db():
-    with app.app_context():
-        db = get_db()
-        # Ensure schema.sql exists before trying to open it
-        if not os.path.exists('schema.sql'):
-            create_schema_sql()
-            
-        with app.open_resource('schema.sql', mode='r') as f:
-            db.cursor().executescript(f.read())
-        db.commit()
-        print("Database tables initialized.")
-
-def create_schema_sql():
-    if not os.path.exists('schema.sql'):
-        with open('schema.sql', 'w') as f:
-            f.write("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    is_warden BOOLEAN NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS complaints (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    student_id INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    category TEXT NOT NULL,
-    description TEXT NOT NULL,
-    proof_file TEXT,
-    status TEXT NOT NULL DEFAULT 'Pending',
-    remark TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES users (id)
-);
-""")
-        print("schema.sql file created.")
-
-# --- Corrected Startup Logic ---
-
-# 1. Create the schema.sql file first (if needed)
-create_schema_sql()
-
-# 2. Define a function to create the warden
-def create_warden():
+    db = get_db()
+    if db is None:
+        print("Cannot initialize DB: Connection failed.")
+        return
+        
+    cursor = db.cursor()
+    
+    # Create users table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        is_warden BOOLEAN NOT NULL DEFAULT FALSE
+    );
+    """)
+    
+    # Create complaints table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS complaints (
+        id SERIAL PRIMARY KEY,
+        student_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Pending',
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (student_id) REFERENCES users (id) ON DELETE CASCADE
+    );
+    """)
+    
+    # Create Warden Account
     try:
-        db = get_db()
         warden_pass = generate_password_hash('CUWARDEN')
-        # Use INSERT OR IGNORE to be safe
-        db.execute("INSERT OR IGNORE INTO users (name, email, password, is_warden) VALUES (?, ?, ?, 1)",
-                   ('Warden', 'hostelwarden.cu@gmail.com', warden_pass))
-        db.commit()
-        print("Warden account check/creation complete.")
+        cursor.execute(
+            "INSERT INTO users (name, email, password, is_warden) VALUES (%s, %s, %s, TRUE) ON CONFLICT (email) DO NOTHING",
+            ('Warden', 'hostelwarden.cu@gmail.com', warden_pass)
+        )
     except Exception as e:
         print(f"Error creating warden: {e}")
+    
+    cursor.close()
+    print("Database initialized and warden created.")
 
-# 3. Run the setup logic within the app context
-# This ensures tables are created BEFORE we try to add the warden
+# Run the setup logic
 with app.app_context():
-    init_db()      # Create the tables from schema.sql
-    create_warden()  # Now that tables exist, insert the warden
-
-# --- End of Corrected Logic ---
-
+    init_db()
 
 # --- Helper Functions ---
 def get_user_by_id(user_id):
     db = get_db()
-    user = db.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    cursor = db.cursor(cursor_factory=DictCursor)
+    cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,))
+    user = cursor.fetchone()
+    cursor.close()
     return user
 
 # --- General Routes ---
@@ -117,17 +113,19 @@ def student_register():
         email = request.form['email']
         password = request.form['password']
         hashed_password = generate_password_hash(password)
-
+        
         db = get_db()
+        cursor = db.cursor()
         try:
-            db.execute('INSERT INTO users (name, email, password, is_warden) VALUES (?, ?, ?, 0)',
-                       (name, email, hashed_password))
-            db.commit()
+            cursor.execute('INSERT INTO users (name, email, password, is_warden) VALUES (%s, %s, %s, FALSE)',
+                           (name, email, hashed_password))
             flash('Registration successful! Please login.', 'success')
             return redirect(url_for('student_login'))
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
             flash('Email already exists.', 'error')
             return render_template('student_register.html')
+        finally:
+            cursor.close()
     return render_template('student_register.html')
 
 @app.route('/student/login', methods=['GET', 'POST'])
@@ -135,9 +133,13 @@ def student_login():
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
+        
         db = get_db()
-        user = db.execute('SELECT * FROM users WHERE email = ? AND is_warden = 0', (email,)).fetchone()
-
+        cursor = db.cursor(cursor_factory=DictCursor)
+        cursor.execute('SELECT * FROM users WHERE email = %s AND is_warden = FALSE', (email,))
+        user = cursor.fetchone()
+        cursor.close()
+        
         if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             session['user_name'] = user['name']
@@ -162,17 +164,12 @@ def add_complaint():
         title = request.form['title']
         category = request.form['category']
         description = request.form['description']
-        proof_file = request.files.get('proof')
-        
-        filename = None
-        if proof_file and proof_file.filename and allowed_file(proof_file.filename):
-            filename = secure_filename(proof_file.filename)
-            proof_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
         db = get_db()
-        db.execute('INSERT INTO complaints (student_id, title, category, description, proof_file) VALUES (?, ?, ?, ?, ?)',
-                   (session['user_id'], title, category, description, filename))
-        db.commit()
+        cursor = db.cursor()
+        cursor.execute('INSERT INTO complaints (student_id, title, category, description) VALUES (%s, %s, %s, %s)',
+                       (session['user_id'], title, category, description))
+        cursor.close()
         
         flash(f"Complaint '{title}' submitted successfully!", 'success')
         return redirect(url_for('my_complaints'))
@@ -185,45 +182,12 @@ def my_complaints():
         return redirect(url_for('student_login'))
 
     db = get_db()
-    complaints = db.execute('SELECT * FROM complaints WHERE student_id = ? ORDER BY created_at DESC',
-                            (session['user_id'],)).fetchall()
+    cursor = db.cursor(cursor_factory=DictCursor)
+    cursor.execute('SELECT * FROM complaints WHERE student_id = %s ORDER BY created_at DESC',
+                   (session['user_id'],))
+    complaints = cursor.fetchall()
+    cursor.close()
     return render_template('my_complaints.html', complaints=complaints)
-
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    # This is a security fix to serve files from the persistent disk
-    # We must join the upload folder path
-    from flask import send_from_directory
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-
-@app.route('/student/profile', methods=['GET', 'POST'])
-def student_profile():
-    if 'user_id' not in session or session.get('is_warden'):
-        return redirect(url_for('student_login'))
-
-    user_id = session['user_id']
-    db = get_db()
-    
-    if request.method == 'POST':
-        name = request.form['name']
-        email = request.form['email']
-        password = request.form.get('password')
-        
-        if password:
-            hashed_password = generate_password_hash(password)
-            db.execute('UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?',
-                       (name, email, hashed_password, user_id))
-        else:
-            db.execute('UPDATE users SET name = ?, email = ? WHERE id = ?',
-                       (name, email, user_id))
-        db.commit()
-        session['user_name'] = name # Update session
-        flash('Profile updated successfully!', 'success')
-        return redirect(url_for('student_profile'))
-
-    user = get_user_by_id(user_id)
-    return render_template('profile.html', user=user, title="Student Profile")
 
 # --- Warden Routes ---
 @app.route('/warden/login', methods=['GET', 'POST'])
@@ -237,7 +201,10 @@ def warden_login():
              return render_template('warden_login.html')
 
         db = get_db()
-        user = db.execute('SELECT * FROM users WHERE email = ? AND is_warden = 1', (email,)).fetchone()
+        cursor = db.cursor(cursor_factory=DictCursor)
+        cursor.execute('SELECT * FROM users WHERE email = %s AND is_warden = TRUE', (email,))
+        user = cursor.fetchone()
+        cursor.close()
         
         if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
@@ -254,14 +221,18 @@ def warden_dashboard():
         return redirect(url_for('warden_login'))
 
     db = get_db()
-    complaints = db.execute("""
+    cursor = db.cursor(cursor_factory=DictCursor)
+    cursor.execute("""
         SELECT c.*, u.name as student_name 
         FROM complaints c
         JOIN users u ON c.student_id = u.id
         ORDER BY c.created_at DESC
-    """).fetchall()
+    """)
+    complaints = cursor.fetchall()
     
-    new_complaints_count = db.execute("SELECT COUNT(*) FROM complaints WHERE status = 'Pending'").fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM complaints WHERE status = 'Pending'")
+    new_complaints_count = cursor.fetchone()[0]
+    cursor.close()
     
     return render_template('warden_dashboard.html', complaints=complaints, new_count=new_complaints_count)
 
@@ -272,8 +243,9 @@ def update_status(id):
         
     new_status = request.form['status']
     db = get_db()
-    db.execute('UPDATE complaints SET status = ? WHERE id = ?', (new_status, id))
-    db.commit()
+    cursor = db.cursor()
+    cursor.execute('UPDATE complaints SET status = %s WHERE id = %s', (new_status, id))
+    cursor.close()
     flash('Complaint status updated.', 'success')
     return redirect(url_for('warden_dashboard'))
 
@@ -284,8 +256,9 @@ def add_remark(id):
         
     remark = request.form['remark']
     db = get_db()
-    db.execute('UPDATE complaints SET remark = ? WHERE id = ?', (remark, id))
-    db.commit()
+    cursor = db.cursor()
+    cursor.execute('UPDATE complaints SET remark = %s WHERE id = %s', (remark, id))
+    cursor.close()
     flash('Remark added successfully.', 'success')
     return redirect(url_for('warden_dashboard'))
 
@@ -295,26 +268,23 @@ def warden_analytics():
         return redirect(url_for('warden_login'))
 
     db = get_db()
+    cursor = db.cursor(cursor_factory=DictCursor)
     
     # Status analytics
-    # --- THIS IS THE FIXED LINE ---
-    status_data = db.execute("SELECT status, COUNT(*) as count FROM complaints GROUP BY status").fetchall()
-    
-    status_counts = {
-        'Pending': 0,
-        'In Progress': 0,
-        'Resolved': 0
-    }
+    cursor.execute("SELECT status, COUNT(*) as count FROM complaints GROUP BY status")
+    status_data = cursor.fetchall()
+    status_counts = {'Pending': 0, 'In Progress': 0, 'Resolved': 0}
     for row in status_data:
         if row['status'] in status_counts:
             status_counts[row['status']] = row['count']
-    
     total_complaints = sum(status_counts.values())
 
     # Category analytics
-    category_data = db.execute("SELECT category, COUNT(*) as count FROM complaints GROUP BY category").fetchall()
+    cursor.execute("SELECT category, COUNT(*) as count FROM complaints GROUP BY category")
+    category_data = cursor.fetchall()
     categories = [row['category'] for row in category_data]
     category_counts = [row['count'] for row in category_data]
+    cursor.close()
     
     return render_template('analytics.html', 
                            status_counts=status_counts, 
@@ -322,13 +292,15 @@ def warden_analytics():
                            categories=categories,
                            category_counts=category_counts)
 
-@app.route('/warden/profile', methods=['GET', 'POST'])
-def warden_profile():
-    if 'user_id' not in session or not session.get('is_warden'):
-        return redirect(url_for('warden_login'))
+# This new route handles BOTH student and warden profiles
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
     
     user_id = session['user_id']
     db = get_db()
+    cursor = db.cursor(cursor_factory=DictCursor)
     
     if request.method == 'POST':
         name = request.form['name']
@@ -337,18 +309,31 @@ def warden_profile():
         
         if password:
             hashed_password = generate_password_hash(password)
-            db.execute('UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?',
-                       (name, email, hashed_password, user_id))
+            cursor.execute('UPDATE users SET name = %s, email = %s, password = %s WHERE id = %s',
+                           (name, email, hashed_password, user_id))
         else:
-            db.execute('UPDATE users SET name = ?, email = ? WHERE id = ?',
-                       (name, email, user_id))
-        db.commit()
-        session['user_name'] = name # Update session
+            cursor.execute('UPDATE users SET name = %s, email = %s WHERE id = %s',
+                           (name, email, user_id))
+        
+        session['user_name'] = name
         flash('Profile updated successfully!', 'success')
-        return redirect(url_for('warden_profile'))
+        return redirect(url_for('profile')) # Redirects to the same profile page
 
     user = get_user_by_id(user_id)
-    return render_template('profile.html', user=user, title="Warden Profile")
+    cursor.close()
+    
+    title = "Warden Profile" if session.get('is_warden') else "Student Profile"
+    return render_template('profile.html', user=user, title=title)
+
+# --- Delete Old Profile Routes ---
+# We delete these because the new /profile route handles both
+@app.route('/student/profile')
+def student_profile_redirect():
+    return redirect(url_for('profile'))
+
+@app.route('/warden/profile')
+def warden_profile_redirect():
+    return redirect(url_for('profile'))
 
 # --- Logout ---
 @app.route('/logout')
