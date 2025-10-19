@@ -24,9 +24,31 @@
                         <span class="complaint-meta">Submitted: {{ complaint.created_at.split(' ')[0] }}</span>
                     </div>
                     <p>{{ complaint.description }}</p>
+
                     {% if complaint.proof_file %}
-                        <p><strong>Proof:</strong> <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View Proof</a></p>
+                        {% set ext = complaint.proof_file.split('.')[-1].lower() %}
+                        <p><strong>Proof:</strong>
+                            {% if ext in ['png', 'jpg', 'jpeg', 'gif'] %}
+                                <br>
+                                <img src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" alt="Proof Image" width="200" style="margin-top:5px; border-radius:6px;">
+                            {% elif ext in ['mp4', 'mov'] %}
+                                <br>
+                                <video width="300" controls style="margin-top:5px; border-radius:6px;">
+                                    <source src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" type="video/{{ ext }}">
+                                    Your browser does not support the video tag.
+                                </video>
+                            {% elif ext in ['mp3', 'wav'] %}
+                                <br>
+                                <audio controls style="margin-top:5px; width: 300px;">
+                                    <source src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" type="audio/{{ ext }}">
+                                    Your browser does not support the audio element.
+                                </audio>
+                            {% else %}
+                                <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View Proof</a>
+                            {% endif %}
+                        </p>
                     {% endif %}
+
                     {% if complaint.remark %}
                         <div class="warden-remark">
                             <strong>Warden's Remark:</strong>
