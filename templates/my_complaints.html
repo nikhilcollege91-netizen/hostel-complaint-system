@@ -1,45 +1,26 @@
 {% extends "layout.html" %}
 {% block title %}My Complaints{% endblock %}
 {% block content %}
-<nav class="navbar">
-    <div class="nav-container">
-        <a class="nav-brand" href="{{ url_for('student_dashboard') }}">Student Portal</a>
-        <ul class="nav-links">
-            <li><a href="{{ url_for('add_complaint') }}">➕ Add Complaint</a></li>
-            <li><a href="{{ url_for('profile') }}">👤 Profile</a></li>
-            <li><a href="{{ url_for('logout') }}">🚪 Logout</a></li>
-        </ul>
-    </div>
-</nav>
+<h2>My Complaints</h2>
 
-<div class="container">
-    <h2>📋 My Submitted Complaints</h2>
-    <div class="complaint-list">
-        {% if complaints %}
-            {% for complaint in complaints %}
-                <div class="card complaint-card">
-                    <div class="complaint-header">
-                        <h3>{{ complaint.title }} <span class="badge badge-{{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status }}</span></h3>
-                        <span class="complaint-meta">Category: {{ complaint.category }}</span>
-                        <span class="complaint-meta">Submitted: {{ complaint.created_at.strftime('%Y-%m-%d') }}</span>
-                    </div>
-                    <p>{{ complaint.description }}</p>
-                    
-                    {% if complaint.proof_file %}
-                        <p><strong>Proof:</strong> <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View Proof</a></p>
-                    {% endif %}
-                    
-                    {% if complaint.remark %}
-                        <div class="warden-remark">
-                            <strong>Warden's Remark:</strong>
-                            <p>{{ complaint.remark }}</p>
-                        </div>
-                    {% endif %}
-                </div>
-            {% endfor %}
-        {% else %}
-            <p>You have not submitted any complaints yet.</p>
-        {% endif %}
-    </div>
-</div>
+{% if complaints %}
+  <ul>
+  {% for c in complaints %}
+    <li>
+      <strong>{{ c.title }}</strong> ({{ c.category }})<br>
+      {{ c.description }}<br>
+      Status: {{ c.status }}<br>
+      {% if c.proof_file %}
+        <a href="{{ url_for('uploaded_file', filename=c.proof_file) }}" target="_blank">View Proof</a><br>
+      {% endif %}
+      {% if c.remark %}
+        Warden Remark: {{ c.remark }}
+      {% endif %}
+      <hr>
+    </li>
+  {% endfor %}
+  </ul>
+{% else %}
+  <p>No complaints yet.</p>
+{% endif %}
 {% endblock %}
