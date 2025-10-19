@@ -1,20 +1,14 @@
-{% extends "layout.html" %}
-{% block title %}Warden Login{% endblock %}
+{% extends 'layout.html' %}
 {% block content %}
-<div class="auth-container">
-    <form class="auth-card slide-in-fade" method="POST">
-        <h2>🧑‍💼 Warden Login</h2>
-        <div class="form-group">
-            <label for="email">Email</label>
-            <input type="email" id="email" name="email" value="hostelwarden.cu@gmail.com" required>
-        </div>
-        <div class="form-group">
-            <label for="password">Password</label>
-            <input type="password" id="password" name="password" required>
-            <small>(Default: CUWARDEN)</small>
-        </div>
-        <button type="submit" class="btn btn-primary btn-glow">Login</button>
-        <p class="auth-switch"><a href="{{ url_for('index') }}">← Back to Home</a></p>
-    </form>
-</div>
+<h2>Warden Login</h2>
+<form method="post">
+  <div class="mb-3">
+    <label>Email</label>
+    <input type="email" name="email" class="form-control" required>
+  </div>
+  <div class="mb-3">
+    <label>Password</label>
+    <input type="password" name="password" class="form-control" required>
+  </div>
+  <button type="submit" class="btn btn-success">Login</button>
 {% endblock %}
