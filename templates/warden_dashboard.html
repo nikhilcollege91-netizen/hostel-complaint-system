@@ -41,34 +41,33 @@
                         <td>{{ complaint.category }}</td>
                         <td style="max-width: 200px; word-wrap: break-word;">{{ complaint.description }}</td>
                         
+                        <!-- PROOF BUTTONS (Improved Design) -->
                         <td style="text-align: center;">
                             {% if complaint.proof_file %}
                                 {% set ext = complaint.proof_file.split('.')[-1].lower() %}
                                 
                                 {% if ext in ['png', 'jpg', 'jpeg', 'gif'] %}
-                                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">
-                                        <img src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" 
-                                             alt="Proof Image" 
-                                             width="120" 
-                                             style="border-radius:6px; margin-top:5px; transition: transform 0.2s;"
-                                             onmouseover="this.style.transform='scale(1.2)'"
-                                             onmouseout="this.style.transform='scale(1)'">
-                                    </a>
+                                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" 
+                                       target="_blank" class="proof-btn img-btn">🖼️ View Image</a>
                                 
                                 {% elif ext in ['mp4', 'mov'] %}
-                                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">🎥 View Video</a>
+                                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" 
+                                       target="_blank" class="proof-btn video-btn">🎥 Watch Video</a>
 
                                 {% elif ext in ['mp3', 'wav'] %}
-                                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">🎧 Listen Audio</a>
+                                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" 
+                                       target="_blank" class="proof-btn audio-btn">🎧 Play Audio</a>
                                 
                                 {% else %}
-                                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View</a>
+                                    <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" 
+                                       target="_blank" class="proof-btn doc-btn">📄 View File</a>
                                 {% endif %}
                             {% else %}
-                                N/A
+                                <span style="color:#999;">N/A</span>
                             {% endif %}
                         </td>
 
+                        <!-- STATUS -->
                         <td>
                             <form action="{{ url_for('update_status', id=complaint.id) }}" method="POST">
                                 <select name="status" onchange="this.form.submit()" 
@@ -80,6 +79,7 @@
                             </form>
                         </td>
 
+                        <!-- REMARK -->
                         <td style="min-width: 200px;">
                             <form action="{{ url_for('add_remark', id=complaint.id) }}" method="POST" class="remark-form" style="display: flex; flex-direction: column; gap: 6px;">
                                 <textarea name="remark" rows="2" placeholder="Add a remark..." 
@@ -95,6 +95,7 @@
     </div>
 </div>
 
+<!-- ================= STYLES ================= -->
 <style>
     .complaint-table th, .complaint-table td {
         padding: 10px 15px;
@@ -108,5 +109,25 @@
     .complaint-table tr:hover {
         background-color: #f9fafc;
     }
+
+    /* Proof Buttons */
+    .proof-btn {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        text-decoration: none;
+        color: white;
+        transition: all 0.2s ease;
+    }
+    .proof-btn:hover {
+        opacity: 0.9;
+        transform: scale(1.05);
+    }
+    .img-btn  { background-color: #3498db; }  /* Blue - Image */
+    .video-btn{ background-color: #e67e22; }  /* Orange - Video */
+    .audio-btn{ background-color: #9b59b6; }  /* Purple - Audio */
+    .doc-btn  { background-color: #16a085; }  /* Teal - Other File */
 </style>
 {% endblock %}
