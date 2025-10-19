@@ -5,330 +5,203 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-very-secret-key-change-this'
+app.secret_key = "your-secret-key"
 
-# --- Paths for permanent storage ---
-PERMANENT_STORAGE_DIR = '/data'
-UPLOAD_FOLDER = os.path.join(PERMANENT_STORAGE_DIR, 'uploads')
-DATABASE_PATH = os.path.join(PERMANENT_STORAGE_DIR, 'hostel.db')
-# --- End of paths ---
+# Folder for uploads
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "mp4", "mov", "mp3", "wav"}
 
-app.config['DATABASE'] = DATABASE_PATH
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'mp3', 'wav'}
+# Database
+DATABASE = "hostel.db"
 
-# --- This function is moved from the top level ---
-def setup_storage():
-    # We use exist_ok=True to prevent errors if the folder already exists
-    try:
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        print(f"Upload folder is ready at: {app.config['UPLOAD_FOLDER']}")
-    except Exception as e:
-        print(f"Error creating storage folders: {e}")
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-
-# --- Database Setup ---
 def get_db():
-    db = getattr(g, '_database', None)
+    db = getattr(g, "_database", None)
     if db is None:
-        db = g._database = sqlite3.connect(app.config['DATABASE'])
+        db = g._database = sqlite3.connect(DATABASE)
         db.row_factory = sqlite3.Row
     return db
 
 @app.teardown_appcontext
 def close_connection(exception):
-    db = getattr(g, '_database', None)
+    db = getattr(g, "_database", None)
     if db is not None:
         db.close()
 
-def init_db():
-    with app.app_context():
-        # --- MOVED THE FOLDER CREATION HERE ---
-        # This runs *after* the app is initialized
-        setup_storage()
-        
-        db = get_db()
-        cursor = db.cursor()
-        
-        # Create users table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            is_warden BOOLEAN NOT NULL DEFAULT 0
-        );
-        """)
-        
-        # Create complaints table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS complaints (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            category TEXT NOT NULL,
-            description TEXT NOT NULL,
-            proof_file TEXT,
-            status TEXT NOT NULL DEFAULT 'Pending',
-            remark TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (student_id) REFERENCES users (id)
-        );
-        """)
-        
-        # Create Warden Account
-        try:
-            warden_pass = generate_password_hash('CUWARDEN')
-            cursor.execute(
-                "INSERT OR IGNORE INTO users (name, email, password, is_warden) VALUES (?, ?, ?, 1)",
-                ('Warden', 'hostelwarden.cu@gmail.com', warden_pass)
-            )
-        except Exception as e:
-            print(f"Error creating warden: {e}")
-        
-        db.commit()
-        cursor.close()
-        print("Database initialized and warden created.")
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# Run the setup logic
+# ---------- INITIALIZE DB ----------
+def init_db():
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        is_warden INTEGER DEFAULT 0
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS complaints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER NOT NULL,
+        title TEXT,
+        category TEXT,
+        description TEXT,
+        proof_file TEXT,
+        status TEXT DEFAULT 'Pending',
+        remark TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # Add default warden if missing
+    check = cursor.execute("SELECT * FROM users WHERE is_warden=1").fetchone()
+    if not check:
+        cursor.execute(
+            "INSERT INTO users (name,email,password,is_warden) VALUES (?,?,?,1)",
+            ("Hostel Warden", "hostelwarden.cu@gmail.com", generate_password_hash("warden123")),
+        )
+
+    db.commit()
+
 with app.app_context():
     init_db()
 
-# --- Helper Functions ---
-def get_user_by_id(user_id):
-    db = get_db()
-    user = db.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-    return user
+# ---------- ROUTES ----------
 
-# --- General Routes ---
-@app.route('/')
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return render_template("index.html")
 
-# --- Student Routes ---
-@app.route('/student/register', methods=['GET', 'POST'])
+@app.route("/student/register", methods=["GET", "POST"])
 def student_register():
-    if request.method == 'POST':
-        name = request.form['name']
-        email = request.form['email']
-        password = request.form['password']
-        hashed_password = generate_password_hash(password)
-
+    if request.method == "POST":
+        name = request.form["name"]
+        email = request.form["email"]
+        password = generate_password_hash(request.form["password"])
         db = get_db()
         try:
-            db.execute('INSERT INTO users (name, email, password, is_warden) VALUES (?, ?, ?, 0)',
-                       (name, email, hashed_password))
+            db.execute("INSERT INTO users (name,email,password,is_warden) VALUES (?,?,?,0)",
+                       (name, email, password))
             db.commit()
-            flash('Registration successful! Please login.', 'success')
-            return redirect(url_for('student_login'))
-        except sqlite3.IntegrityError:
-            flash('Email already exists.', 'error')
-            return render_template('student_register.html')
-    return render_template('student_register.html')
+            flash("Registered successfully! Please login.")
+            return redirect(url_for("student_login"))
+        except:
+            flash("Email already exists.")
+    return render_template("student_register.html")
 
-@app.route('/student/login', methods=['GET', 'POST'])
+@app.route("/student/login", methods=["GET", "POST"])
 def student_login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
         db = get_db()
-        user = db.execute('SELECT * FROM users WHERE email = ? AND is_warden = 0', (email,)).fetchone()
+        user = db.execute("SELECT * FROM users WHERE email=? AND is_warden=0", (email,)).fetchone()
+        if user and check_password_hash(user["password"], password):
+            session["user_id"] = user["id"]
+            session["is_warden"] = False
+            session["user_name"] = user["name"]
+            return redirect(url_for("student_dashboard"))
+        flash("Invalid login.")
+    return render_template("student_login.html")
 
-        if user and check_password_hash(user['password'], password):
-            session['user_id'] = user['id']
-            session['user_name'] = user['name']
-            session['is_warden'] = False
-            return redirect(url_for('student_dashboard'))
-        else:
-            flash('Invalid email or password.', 'error')
-    return render_template('student_login.html')
-
-@app.route('/student/dashboard')
+@app.route("/student/dashboard")
 def student_dashboard():
-    if 'user_id' not in session or session.get('is_warden'):
-        return redirect(url_for('student_login'))
-    return render_template('student_dashboard.html', name=session['user_name'])
+    if "user_id" not in session or session.get("is_warden"):
+        return redirect(url_for("student_login"))
+    return render_template("student_dashboard.html", name=session.get("user_name"))
 
-@app.route('/student/add_complaint', methods=['GET', 'POST'])
+@app.route("/student/add_complaint", methods=["GET", "POST"])
 def add_complaint():
-    if 'user_id' not in session or session.get('is_warden'):
-        return redirect(url_for('student_login'))
+    if "user_id" not in session or session.get("is_warden"):
+        return redirect(url_for("student_login"))
 
-    if request.method == 'POST':
-        title = request.form['title']
-        category = request.form['category']
-        description = request.form['description']
-        proof_file = request.files.get('proof')
-        
+    if request.method == "POST":
+        title = request.form["title"]
+        category = request.form["category"]
+        description = request.form["description"]
+        file = request.files.get("proof")
         filename = None
-        if proof_file and proof_file.filename and allowed_file(proof_file.filename):
-            filename = secure_filename(proof_file.filename)
-            # Save the file to the permanent UPLOAD_FOLDER
-            proof_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            print(f"File saved to: {os.path.join(app.config['UPLOAD_FOLDER'], filename)}")
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
 
         db = get_db()
-        db.execute('INSERT INTO complaints (student_id, title, category, description, proof_file) VALUES (?, ?, ?, ?, ?)',
-                   (session['user_id'], title, category, description, filename))
+        db.execute(
+            "INSERT INTO complaints (student_id,title,category,description,proof_file) VALUES (?,?,?,?,?)",
+            (session["user_id"], title, category, description, filename),
+        )
         db.commit()
-        
-        flash(f"Complaint '{title}' submitted successfully!", 'success')
-        
-        return redirect(url_for('my_complaints'))
+        flash("Complaint submitted successfully.")
+        return redirect(url_for("my_complaints"))
 
-    return render_template('add_complaint.html')
+    return render_template("add_complaint.html")
 
-@app.route('/student/my_complaints')
+@app.route("/student/my_complaints")
 def my_complaints():
-    if 'user_id' not in session or session.get('is_warden'):
-        return redirect(url_for('student_login'))
-
+    if "user_id" not in session or session.get("is_warden"):
+        return redirect(url_for("student_login"))
     db = get_db()
-    complaints = db.execute('SELECT * FROM complaints WHERE student_id = ? ORDER BY created_at DESC',
-                            (session['user_id'],)).fetchall()
-    return render_template('my_complaints.html', complaints=complaints)
+    complaints = db.execute("SELECT * FROM complaints WHERE student_id=? ORDER BY created_at DESC",
+                            (session["user_id"],)).fetchall()
+    return render_template("my_complaints.html", complaints=complaints)
 
-# This route lets the warden see the files
-@app.route('/data/uploads/<filename>')
+@app.route("/uploads/<filename>")
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
-# --- Warden Routes ---
-@app.route('/warden/login', methods=['GET', 'POST'])
+@app.route("/warden/login", methods=["GET", "POST"])
 def warden_login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-        
-        if email != 'hostelwarden.cu@gmail.com':
-             flash('Invalid email or password.', 'error')
-             return render_template('warden_login.html')
-
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
         db = get_db()
-        user = db.execute('SELECT * FROM users WHERE email = ? AND is_warden = 1', (email,)).fetchone()
-        
-        if user and check_password_hash(user['password'], password):
-            session['user_id'] = user['id']
-            session['user_name'] = user['name']
-            session['is_warden'] = True
-            return redirect(url_for('warden_dashboard'))
-        else:
-            flash('Invalid email or password.', 'error')
-    return render_template('warden_login.html')
+        user = db.execute("SELECT * FROM users WHERE email=? AND is_warden=1", (email,)).fetchone()
+        if user and check_password_hash(user["password"], password):
+            session["user_id"] = user["id"]
+            session["is_warden"] = True
+            session["user_name"] = user["name"]
+            return redirect(url_for("warden_dashboard"))
+        flash("Invalid login.")
+    return render_template("warden_login.html")
 
-@app.route('/warden/dashboard')
+@app.route("/warden/dashboard")
 def warden_dashboard():
-    if 'user_id' not in session or not session.get('is_warden'):
-        return redirect(url_for('warden_login'))
-
+    if "user_id" not in session or not session.get("is_warden"):
+        return redirect(url_for("warden_login"))
     db = get_db()
     complaints = db.execute("""
-        SELECT c.*, u.name as student_name 
+        SELECT c.*, u.name as student_name
         FROM complaints c
         JOIN users u ON c.student_id = u.id
         ORDER BY c.created_at DESC
     """).fetchall()
-    
-    new_complaints_count = db.execute("SELECT COUNT(*) FROM complaints WHERE status = 'Pending'").fetchone()[0]
-    
-    return render_template('warden_dashboard.html', complaints=complaints, new_count=new_complaints_count)
+    return render_template("warden_dashboard.html", complaints=complaints)
 
-@app.route('/warden/update_status/<int:id>', methods=['POST'])
-def update_status(id):
-    if 'user_id' not in session or not session.get('is_warden'):
-        return redirect(url_for('warden_login'))
-        
-    new_status = request.form['status']
+@app.route("/warden/update_status", methods=["POST"])
+def warden_update_status():
+    if "user_id" not in session or not session.get("is_warden"):
+        return redirect(url_for("warden_login"))
+    cid = request.form["id"]
+    status = request.form["status"]
+    remark = request.form["remark"]
     db = get_db()
-    db.execute('UPDATE complaints SET status = ? WHERE id = ?', (new_status, id))
+    db.execute("UPDATE complaints SET status=?, remark=? WHERE id=?", (status, remark, cid))
     db.commit()
-    flash('Complaint status updated.', 'success')
-    return redirect(url_for('warden_dashboard'))
+    flash("Complaint updated.")
+    return redirect(url_for("warden_dashboard"))
 
-@app.route('/warden/add_remark/<int:id>', methods=['POST'])
-def add_remark(id):
-    if 'user_id' not in session or not session.get('is_warden'):
-        return redirect(url_for('warden_login'))
-        
-    remark = request.form['remark']
-    db = get_db()
-    db.execute('UPDATE complaints SET remark = ? WHERE id = ?', (remark, id))
-    db.commit()
-    flash('Remark added successfully.', 'success')
-    return redirect(url_for('warden_dashboard'))
-
-@app.route('/warden/analytics')
-def warden_analytics():
-    if 'user_id' not in session or not session.get('is_warden'):
-        return redirect(url_for('warden_login'))
-
-    db = get_db()
-    
-    status_data = db.execute("SELECT status, COUNT(*) as count FROM complaints GROUP BY status").fetchall()
-    status_counts = {'Pending': 0, 'In Progress': 0, 'Resolved': 0}
-    for row in status_data:
-        if row['status'] in status_counts:
-            status_counts[row['status']] = row['count']
-    total_complaints = sum(status_counts.values())
-
-    category_data = db.execute("SELECT category, COUNT(*) as count FROM complaints GROUP BY category").fetchall()
-    categories = [row['category'] for row in category_data]
-    category_counts = [row['count'] for row in category_data]
-    
-    return render_template('analytics.html', 
-                           status_counts=status_counts, 
-                           total_complaints=total_complaints,
-                           categories=categories,
-                           category_counts=category_counts)
-
-# This new route handles BOTH student and warden profiles
-@app.route('/profile', methods=['GET', 'POST'])
-def profile():
-    if 'user_id' not in session:
-        return redirect(url_for('index'))
-    
-    user_id = session['user_id']
-    db = get_db()
-    
-    if request.method == 'POST':
-        name = request.form['name']
-        email = request.form['email']
-        password = request.form.get('password')
-        
-        if password:
-            hashed_password = generate_password_hash(password)
-            db.execute('UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?',
-                       (name, email, hashed_password, user_id))
-        else:
-            db.execute('UPDATE users SET name = ?, email = ? WHERE id = ?',
-                       (name, email, user_id))
-        db.commit()
-        session['user_name'] = name
-        flash('Profile updated successfully!', 'success')
-        return redirect(url_for('profile'))
-
-    user = get_user_by_id(user_id)
-    title = "Warden Profile" if session.get('is_warden') else "Student Profile"
-    return render_template('profile.html', user=user, title=title)
-
-@app.route('/student/profile')
-def student_profile_redirect():
-    return redirect(url_for('profile'))
-
-@app.route('/warden/profile')
-def warden_profile_redirect():
-    return redirect(url_for('profile'))
-
-# --- Logout ---
-@app.route('/logout')
+@app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for('index'))
+    return redirect(url_for("index"))
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+if __name__ == "__main__":
+    app.run(debug=True)
