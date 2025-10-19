@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block title %}Welcome - Hostel Complaint System{% endblock %}
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card" style="text-align: center;">
+        <h1 class="main-title">Hostel Complaint System 🏫</h1>
+        <h2 id="tagline"></h2>
+        <div class="button-container">
+            <a href="{{ url_for('student_login') }}" class="btn btn-primary btn-glow">👨‍🎓 Student Portal</a>
+            <a href="{{ url_for('warden_login') }}" class="btn btn-secondary btn-glow">🧑‍💼 Warden Portal</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
