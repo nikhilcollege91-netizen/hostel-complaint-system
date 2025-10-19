@@ -15,14 +15,13 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# ------------------ Disable Buffering + Cache FIXED ------------------
+# ------------------ Disable Buffering + Cache ------------------
 @app.after_request
 def disable_caching(response):
     if response.mimetype == 'text/html':
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
-    response.headers["X-Accel-Buffering"] = "no"
     return response
 
 # ------------------ Database Helpers ------------------
@@ -163,11 +162,14 @@ def add_complaint():
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
     if not os.path.exists(filepath):
         return "File not found", 404
+
     mime_type, _ = mimetypes.guess_type(filepath)
     if not mime_type:
         mime_type = 'application/octet-stream'
+
     return send_file(filepath, mimetype=mime_type, as_attachment=False, conditional=True)
 
 @app.route('/student/my_complaints')
