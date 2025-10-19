@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warden Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dashboard-bg">
+    <div class="navbar">
+        <h2>Welcome, Warden 👋</h2>
+        <a href="/analytics" class="nav-btn">Analytics</a>
+        <a href="/warden_profile" class="nav-btn">Profile</a>
+        <a href="/logout" class="nav-btn">Logout</a>
+    </div>
+
+    <div class="complaint-table">
+        <h3>🔔 New Complaints ({{ new_count }})</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Student</th>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>Description</th>
+                    <th>Proof</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in complaints %}
+                <tr>
+                    <td>{{ c.student_name }}</td>
+                    <td>{{ c.title }}</td>
+                    <td>{{ c.category }}</td>
+                    <td>{{ c.description }}</td>
+                    <td>
+                        {% if c.proof %}
+                        <a href="/uploads/{{ c.proof }}" target="_blank">View</a>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="/update_status/{{ c.id }}">
+                            <select name="status" onchange="this.form.submit()">
+                                <option {% if c.status=='Pending' %}selected{% endif %}>Pending</option>
+                                <option {% if c.status=='In Progress' %}selected{% endif %}>In Progress</option>
+                                <option {% if c.status=='Resolved' %}selected{% endif %}>Resolved</option>
+                            </select>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Profile</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="form-bg">
+    <div class="form-card">
+        <h2>My Profile</h2>
+        <form method="POST">
+            <input type="text" name="name" value="{{ student.name }}" required>
+            <input type="email" name="email" value="{{ student.email }}" required>
+            <input type="password" name="password" placeholder="New Password (optional)">
+            <button type="submit">Update Profile</button>
+        </form>
+        <a href="/student_dashboard" class="link">⬅ Back to Dashboard</a>
+    </div>
+</body>
+</html>

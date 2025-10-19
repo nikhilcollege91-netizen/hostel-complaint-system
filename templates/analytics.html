@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complaint Analytics</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="dashboard-bg">
+    <div class="navbar">
+        <h2>📈 Complaint Analytics</h2>
+        <a href="/warden_dashboard" class="nav-btn">Dashboard</a>
+        <a href="/logout" class="nav-btn">Logout</a>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="complaintChart"></canvas>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('complaintChart');
+        new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['Pending', 'In Progress', 'Resolved'],
+                datasets: [{
+                    data: [{{ pending }}, {{ progress }}, {{ resolved }}],
+                    backgroundColor: ['#fbc02d', '#ff9800', '#4caf50']
+                }]
+            }
+        });
+    </script>
+</body>
+</html>
