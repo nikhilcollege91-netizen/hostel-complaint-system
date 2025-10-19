@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, session, g, flash, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, g, flash, send_from_directory, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
@@ -10,18 +10,20 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-very-secret-key-ch
 app.config['DATABASE'] = 'hostel.db'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'mp3', 'wav'}
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB upload limit
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
 
-# ------------------ Disable Browser Caching (Fix Back Buffering) ------------------
+# ------------------ No Cache (Fix Render Buffering) ------------------
 @app.after_request
 def add_no_cache_headers(response):
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
+    response.headers['Vary'] = 'Cookie, Authorization'
+    response.headers['X-Accel-Buffering'] = 'no'  # Disable Render proxy buffering
     return response
 
 
@@ -78,7 +80,6 @@ def ensure_warden_exists():
     db.commit()
 
 
-# Initialize DB in Render safely
 with app.app_context():
     init_db()
     ensure_warden_exists()
@@ -100,7 +101,7 @@ def index():
     return render_template('index.html')
 
 
-# ---------- Student ----------
+# --- Student Registration/Login ---
 @app.route('/student/register', methods=['GET', 'POST'])
 def student_register():
     if request.method == 'POST':
@@ -127,7 +128,7 @@ def student_login():
         email = request.form['email']
         password = request.form['password']
         db = get_db()
-        user = db.execute('SELECT * FROM users WHERE email=? AND is_warden=0', (email,)).fetchone()
+        user = db.execute('SELECT * FROM users WHERE email = ? AND is_warden = 0', (email,)).fetchone()
         if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             session['user_name'] = user['name']
@@ -154,8 +155,8 @@ def add_complaint():
         category = request.form['category']
         description = request.form['description']
         proof_file = request.files.get('proof')
-        filename = None
 
+        filename = None
         if proof_file and allowed_file(proof_file.filename):
             filename = secure_filename(proof_file.filename)
             proof_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
@@ -168,7 +169,6 @@ def add_complaint():
         db.commit()
         flash('Complaint submitted successfully!', 'success')
         return redirect(url_for('my_complaints'))
-
     return render_template('add_complaint.html')
 
 
@@ -193,6 +193,7 @@ def uploaded_file(filename):
 def student_profile():
     if 'user_id' not in session or session.get('is_warden'):
         return redirect(url_for('student_login'))
+
     db = get_db()
     user = get_user_by_id(session['user_id'])
     if request.method == 'POST':
@@ -213,7 +214,7 @@ def student_profile():
     return render_template('profile.html', user=user, title="Student Profile")
 
 
-# ---------- Warden ----------
+# --- Warden ---
 @app.route('/warden/login', methods=['GET', 'POST'])
 def warden_login():
     if request.method == 'POST':
@@ -308,7 +309,7 @@ def warden_profile():
                        (name, email, user['id']))
         db.commit()
         session['user_name'] = name
-        flash('Profile updated successfully!', 'success')
+        flash('Profile updated successfully.', 'success')
         return redirect(url_for('warden_profile'))
     return render_template('profile.html', user=user, title="Warden Profile")
 
@@ -321,4 +322,4 @@ def logout():
 
 # ------------------ Run App ------------------
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
