@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block title %}My Complaints{% endblock %}
+{% block content %}
+<nav class="navbar">
+    <div class="nav-container">
+        <a class="nav-brand" href="{{ url_for('student_dashboard') }}">Student Portal</a>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('add_complaint') }}">➕ Add Complaint</a></li>
+            <li><a href="{{ url_for('student_profile') }}">👤 Profile</a></li>
+            <li><a href="{{ url_for('logout') }}">🚪 Logout</a></li>
+        </ul>
+    </div>
+</nav>
+
+<div class="container">
+    <h2>📋 My Submitted Complaints</h2>
+    <div class="complaint-list">
+        {% if complaints %}
+            {% for complaint in complaints %}
+                <div class="card complaint-card">
+                    <div class="complaint-header">
+                        <h3>{{ complaint.title }} <span class="badge badge-{{ complaint.status | lower | replace(' ', '-') }}">{{ complaint.status }}</span></h3>
+                        <span class="complaint-meta">Category: {{ complaint.category }}</span>
+                        <span class="complaint-meta">Submitted: {{ complaint.created_at.split(' ')[0] }}</span>
+                    </div>
+                    <p>{{ complaint.description }}</p>
+
+                    {% if complaint.proof_file %}
+                        {% set ext = complaint.proof_file.split('.')[-1].lower() %}
+                        <p><strong>Proof:</strong>
+                            {% if ext in ['png', 'jpg', 'jpeg', 'gif'] %}
+                                <br>
+                                <img src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" alt="Proof Image" width="200" style="margin-top:5px; border-radius:6px;">
+                            {% elif ext in ['mp4', 'mov'] %}
+                                <br>
+                                <video width="300" controls style="margin-top:5px; border-radius:6px;">
+                                    <source src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" type="video/{{ ext }}">
+                                    Your browser does not support the video tag.
+                                </video>
+                            {% elif ext in ['mp3', 'wav'] %}
+                                <br>
+                                <audio controls style="margin-top:5px; width: 300px;">
+                                    <source src="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" type="audio/{{ ext }}">
+                                    Your browser does not support the audio element.
+                                </audio>
+                            {% else %}
+                                <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View Proof</a>
+                            {% endif %}
+                        </p>
+                    {% endif %}
+
+                    {% if complaint.remark %}
+                        <div class="warden-remark">
+                            <strong>Warden's Remark:</strong>
+                            <p>{{ complaint.remark }}</p>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>You have not submitted any complaints yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
