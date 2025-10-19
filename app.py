@@ -7,22 +7,24 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-very-secret-key-change-this'
 
-# --- This is the new, correct path for permanent storage ---
-# We tell Render to create a "Disk" at '/data'
-# Then we save all our permanent files there.
+# --- Paths for permanent storage ---
 PERMANENT_STORAGE_DIR = '/data'
 UPLOAD_FOLDER = os.path.join(PERMANENT_STORAGE_DIR, 'uploads')
 DATABASE_PATH = os.path.join(PERMANENT_STORAGE_DIR, 'hostel.db')
-# --- End of new paths ---
+# --- End of paths ---
 
 app.config['DATABASE'] = DATABASE_PATH
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'mp3', 'wav'}
 
-# Create the folders if they don't exist
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
-    print(f"Created folder: {app.config['UPLOAD_FOLDER']}")
+# --- This function is moved from the top level ---
+def setup_storage():
+    # We use exist_ok=True to prevent errors if the folder already exists
+    try:
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        print(f"Upload folder is ready at: {app.config['UPLOAD_FOLDER']}")
+    except Exception as e:
+        print(f"Error creating storage folders: {e}")
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -44,6 +46,10 @@ def close_connection(exception):
 
 def init_db():
     with app.app_context():
+        # --- MOVED THE FOLDER CREATION HERE ---
+        # This runs *after* the app is initialized
+        setup_storage()
+        
         db = get_db()
         cursor = db.cursor()
         
@@ -170,7 +176,6 @@ def add_complaint():
                    (session['user_id'], title, category, description, filename))
         db.commit()
         
-        # --- THIS IS THE FIXED LINE ---
         flash(f"Complaint '{title}' submitted successfully!", 'success')
         
         return redirect(url_for('my_complaints'))
