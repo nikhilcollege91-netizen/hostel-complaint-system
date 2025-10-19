@@ -1,6 +1,7 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, session, g, flash, send_from_directory
+import mimetypes
+from flask import Flask, render_template, request, redirect, url_for, session, g, flash, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
@@ -146,7 +147,6 @@ def add_complaint():
             filename = secure_filename(proof_file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             proof_file.save(filepath)
-            print(f"✅ Saved proof at {filepath}")
 
         db = get_db()
         db.execute(
@@ -159,9 +159,19 @@ def add_complaint():
 
     return render_template('add_complaint.html')
 
+# ✅ FIXED PROOF VIEWER ROUTE
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, cache_timeout=0)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    if not os.path.exists(filepath):
+        return "File not found", 404
+
+    mime_type, _ = mimetypes.guess_type(filepath)
+    if not mime_type:
+        mime_type = 'application/octet-stream'
+
+    return send_file(filepath, mimetype=mime_type, as_attachment=False, conditional=True)
 
 @app.route('/student/my_complaints')
 def my_complaints():
@@ -287,7 +297,7 @@ def warden_profile():
                        (name, email, user['id']))
         db.commit()
         session['user_name'] = name
-        flash('Profile updated successfully!', 'success')
+        flash('Profile updated successfully.', 'success')
         return redirect(url_for('warden_profile'))
     return render_template('profile.html', user=user, title="Warden Profile")
 
