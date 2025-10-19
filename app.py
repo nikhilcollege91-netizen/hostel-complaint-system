@@ -170,7 +170,9 @@ def add_complaint():
                    (session['user_id'], title, category, description, filename))
         db.commit()
         
-        flash(f"Complaint '{title}' submitted successfully!', 'success')
+        # --- THIS IS THE FIXED LINE ---
+        flash(f"Complaint '{title}' submitted successfully!", 'success')
+        
         return redirect(url_for('my_complaints'))
 
     return render_template('add_complaint.html')
