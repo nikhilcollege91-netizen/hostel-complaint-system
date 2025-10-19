@@ -3,6 +3,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Loading Screen Logic ---
     const loader = document.getElementById('loader');
     if (loader) {
+        // Hide loader initially
+        loader.style.opacity = '0';
+        loader.style.visibility = 'hidden';
+
         // Show loader on form submit or link click
         const forms = document.querySelectorAll('form');
         const links = document.querySelectorAll('a:not([target="_blank"])');
@@ -14,15 +18,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         forms.forEach(form => form.addEventListener('submit', showLoader));
         links.forEach(link => link.addEventListener('click', (e) => {
-            // Only show loader for internal links, not "View Proof" etc.
+            // Only show loader for internal links, not external
             if (link.href && (link.href.includes(window.location.hostname) || link.href.startsWith('/'))) {
                 showLoader();
             }
         }));
 
         // Hide loader when page is fully loaded
-        window.addEventListener('load', () => {
+        const hideLoader = () => {
+            loader.style.opacity = '0';
+            loader.style.visibility = 'hidden';
             document.body.classList.add('loaded');
+        };
+
+        window.addEventListener('load', hideLoader);
+
+        // Fix for back-button bfcache issue
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted) {
+                hideLoader();
+            }
         });
     }
 
