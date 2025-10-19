@@ -4,18 +4,22 @@ from flask import Flask, render_template, request, redirect, url_for, session, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
+# ---------- BASIC APP SETUP ----------
 app = Flask(__name__)
-app.secret_key = "your-secret-key"
 
-# Folder for uploads
+# Secret key for sessions
+app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
+
+# Folder for uploaded proofs
 UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "mp4", "mov", "mp3", "wav"}
 
-# Database
-DATABASE = "hostel.db"
+# Database file (in project folder)
+DATABASE = os.path.join(os.getcwd(), "hostel.db")
 
+# ---------- DATABASE HELPERS ----------
 def get_db():
     db = getattr(g, "_database", None)
     if db is None:
@@ -32,7 +36,7 @@ def close_connection(exception):
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# ---------- INITIALIZE DB ----------
+# ---------- INITIALIZE DATABASE ----------
 def init_db():
     db = get_db()
     cursor = db.cursor()
@@ -61,7 +65,7 @@ def init_db():
     )
     """)
 
-    # Add default warden if missing
+    # Default warden
     check = cursor.execute("SELECT * FROM users WHERE is_warden=1").fetchone()
     if not check:
         cursor.execute(
@@ -75,7 +79,6 @@ with app.app_context():
     init_db()
 
 # ---------- ROUTES ----------
-
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -203,5 +206,7 @@ def logout():
     session.clear()
     return redirect(url_for("index"))
 
+# ---------- RENDER DEPLOYMENT ENTRY POINT ----------
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Render provides PORT env var
+    app.run(host="0.0.0.0", port=port, debug=False)
