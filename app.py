@@ -35,9 +35,14 @@ def close_connection(exception):
 def init_db():
     with app.app_context():
         db = get_db()
+        # Ensure schema.sql exists before trying to open it
+        if not os.path.exists('schema.sql'):
+            create_schema_sql()
+            
         with app.open_resource('schema.sql', mode='r') as f:
             db.cursor().executescript(f.read())
         db.commit()
+        print("Database tables initialized.")
 
 def create_schema_sql():
     if not os.path.exists('schema.sql'):
@@ -63,30 +68,35 @@ CREATE TABLE IF NOT EXISTS complaints (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES users (id)
 );
-
--- Pre-create Warden Account
-INSERT OR IGNORE INTO users (name, email, password, is_warden)
-VALUES ('Warden', 'hostelwarden.cu@gmail.com', ?, 1);
 """)
-    # Generate a hash for the default password 'CUWARDEN'
-    # We must do this part in Python as we can't call generate_password_hash in SQL
+        print("schema.sql file created.")
+
+# --- Corrected Startup Logic ---
+
+# 1. Create the schema.sql file first (if needed)
+create_schema_sql()
+
+# 2. Define a function to create the warden
+def create_warden():
     try:
         db = get_db()
         warden_pass = generate_password_hash('CUWARDEN')
-        # Use INSERT OR IGNORE to avoid errors if the warden already exists
+        # Use INSERT OR IGNORE to be safe
         db.execute("INSERT OR IGNORE INTO users (name, email, password, is_warden) VALUES (?, ?, ?, 1)",
                    ('Warden', 'hostelwarden.cu@gmail.com', warden_pass))
         db.commit()
-    except sqlite3.IntegrityError:
-        # Warden already exists, which is fine
-        pass
+        print("Warden account check/creation complete.")
     except Exception as e:
         print(f"Error creating warden: {e}")
 
-# Initialize the database and create the warden
-create_schema_sql()
+# 3. Run the setup logic within the app context
+# This ensures tables are created BEFORE we try to add the warden
 with app.app_context():
-    init_db()
+    init_db()      # Create the tables from schema.sql
+    create_warden()  # Now that tables exist, insert the warden
+
+# --- End of Corrected Logic ---
+
 
 # --- Helper Functions ---
 def get_user_by_id(user_id):
@@ -181,7 +191,10 @@ def my_complaints():
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
-    return redirect(url_for('static', filename=os.path.join(app.config['UPLOAD_FOLDER'], filename).replace('uploads/','')), code=301)
+    # This is a security fix to serve files from the persistent disk
+    # We must join the upload folder path
+    from flask import send_from_directory
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
 @app.route('/student/profile', methods=['GET', 'POST'])
@@ -284,7 +297,8 @@ def warden_analytics():
     db = get_db()
     
     # Status analytics
-    status_data = db.execute("SELECT status, COUNT(*) as count FROM complaints GROUP BY status").fetchall()
+    status_data = db.execute("SELECT status, COUNT(*) as count FROM complaints GROUP BY status").
+    fetchall()
     status_counts = {
         'Pending': 0,
         'In Progress': 0,
@@ -342,4 +356,5 @@ def logout():
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
