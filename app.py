@@ -15,7 +15,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# ------------------ Disable Buffering + Cache ------------------
+# ------------------ Disable Cache for HTML ------------------
 @app.after_request
 def disable_caching(response):
     if response.mimetype == 'text/html':
@@ -90,7 +90,7 @@ def get_user_by_id(user_id):
 def index():
     return render_template('index.html')
 
-# --- Student Register/Login ---
+# --- Student Routes ---
 @app.route('/student/register', methods=['GET', 'POST'])
 def student_register():
     if request.method == 'POST':
@@ -162,25 +162,17 @@ def add_complaint():
 @app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
     if not os.path.exists(filepath):
         return "File not found", 404
-
     mime_type, _ = mimetypes.guess_type(filepath)
-    if not mime_type:
-        mime_type = 'application/octet-stream'
-
-    return send_file(filepath, mimetype=mime_type, as_attachment=False, conditional=True)
+    return send_file(filepath, mimetype=mime_type or 'application/octet-stream', as_attachment=False, conditional=True)
 
 @app.route('/student/my_complaints')
 def my_complaints():
     if 'user_id' not in session or session.get('is_warden'):
         return redirect(url_for('student_login'))
     db = get_db()
-    complaints = db.execute(
-        'SELECT * FROM complaints WHERE student_id = ? ORDER BY created_at DESC',
-        (session['user_id'],)
-    ).fetchall()
+    complaints = db.execute('SELECT * FROM complaints WHERE student_id=? ORDER BY created_at DESC', (session['user_id'],)).fetchall()
     return render_template('my_complaints.html', complaints=complaints)
 
 @app.route('/student/profile', methods=['GET', 'POST'])
@@ -195,18 +187,16 @@ def student_profile():
         password = request.form.get('password')
         if password:
             hashed = generate_password_hash(password)
-            db.execute('UPDATE users SET name=?, email=?, password=? WHERE id=?',
-                       (name, email, hashed, user['id']))
+            db.execute('UPDATE users SET name=?, email=?, password=? WHERE id=?', (name, email, hashed, user['id']))
         else:
-            db.execute('UPDATE users SET name=?, email=? WHERE id=?',
-                       (name, email, user['id']))
+            db.execute('UPDATE users SET name=?, email=? WHERE id=?', (name, email, user['id']))
         db.commit()
         session['user_name'] = name
         flash('Profile updated successfully!', 'success')
         return redirect(url_for('student_profile'))
     return render_template('profile.html', user=user, title="Student Profile")
 
-# --- Warden ---
+# --- Warden Routes ---
 @app.route('/warden/login', methods=['GET', 'POST'])
 def warden_login():
     if request.method == 'POST':
@@ -289,17 +279,16 @@ def warden_profile():
         password = request.form.get('password')
         if password:
             hashed = generate_password_hash(password)
-            db.execute('UPDATE users SET name=?, email=?, password=? WHERE id=?',
-                       (name, email, hashed, user['id']))
+            db.execute('UPDATE users SET name=?, email=?, password=? WHERE id=?', (name, email, hashed, user['id']))
         else:
-            db.execute('UPDATE users SET name=?, email=? WHERE id=?',
-                       (name, email, user['id']))
+            db.execute('UPDATE users SET name=?, email=? WHERE id=?', (name, email, user['id']))
         db.commit()
         session['user_name'] = name
         flash('Profile updated successfully.', 'success')
         return redirect(url_for('warden_profile'))
     return render_template('profile.html', user=user, title="Warden Profile")
 
+# --- Logout ---
 @app.route('/logout')
 def logout():
     session.clear()
