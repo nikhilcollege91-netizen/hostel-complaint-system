@@ -1,31 +1,9 @@
-{% extends "layout.html" %}
-{% block title %}Student Dashboard{% endblock %}
+{% extends 'layout.html' %}
 {% block content %}
-<nav class="navbar">
-    <div class="nav-container">
-        <a class="nav-brand" href="{{ url_for('student_dashboard') }}">Student Portal</a>
-        <ul class="nav-links">
-            <li><a href="{{ url_for('student_profile') }}">👤 Profile</a></li>
-            <li><a href="{{ url_for('logout') }}">🚪 Logout</a></li>
-        </ul>
-    </div>
-</nav>
-
-<div class="container">
-    <h1 class="welcome-greeting">👋 Welcome, {{ name }}!</h1>
-    <div class="dashboard-cards">
-        <a href="{{ url_for('add_complaint') }}" class="card anim-card">
-            <h3>➕ Add New Complaint</h3>
-            <p>Submit a new complaint about any issue.</p>
-        </a>
-        <a href="{{ url_for('my_complaints') }}" class="card anim-card">
-            <h3>📋 My Complaints</h3>
-            <p>View the status of all your submitted complaints.</p>
-        </a>
-        <a href="{{ url_for('student_profile') }}" class="card anim-card">
-            <h3>👤 My Profile</h3>
-            <p>Update your personal information and password.</p>
-        </a>
-    </div>
+<h3>Welcome, {{ name }}!</h3>
+<div class="mt-3">
+  <a href="{{ url_for('add_complaint') }}" class="btn btn-primary">Add Complaint</a>
+  <a href="{{ url_for('my_complaints') }}" class="btn btn-info">My Complaints</a>
+  <a href="{{ url_for('student_profile') }}" class="btn btn-secondary">Profile</a>
 </div>
 {% endblock %}
