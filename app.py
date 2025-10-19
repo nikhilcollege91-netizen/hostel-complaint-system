@@ -10,10 +10,19 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-very-secret-key-ch
 app.config['DATABASE'] = 'hostel.db'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'mov', 'mp3', 'wav'}
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB upload limit
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
+
+
+# ------------------ Disable Browser Caching (Fix Back Buffering) ------------------
+@app.after_request
+def add_no_cache_headers(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, private, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 # ------------------ Database Helpers ------------------
@@ -60,7 +69,6 @@ def init_db():
 
 
 def ensure_warden_exists():
-    """Ensure warden account is created after DB init."""
     db = get_db()
     warden_pass = generate_password_hash('CUWARDEN')
     db.execute("""
@@ -70,25 +78,13 @@ def ensure_warden_exists():
     db.commit()
 
 
-# Initialize DB safely inside app context
+# Initialize DB in Render safely
 with app.app_context():
     init_db()
     ensure_warden_exists()
 
 
-# ------------------ Cache Control (Fixes Buffering) ------------------
-@app.after_request
-def add_cache_headers(response):
-    """
-    Prevents excessive reloading and buffering when using the browser's back button.
-    """
-    response.headers["Cache-Control"] = "public, max-age=120"
-    response.headers["Pragma"] = "cache"
-    response.headers["Expires"] = "120"
-    return response
-
-
-# ------------------ Utility Functions ------------------
+# ------------------ Utility ------------------
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
@@ -104,7 +100,7 @@ def index():
     return render_template('index.html')
 
 
-# --- Student Registration/Login ---
+# ---------- Student ----------
 @app.route('/student/register', methods=['GET', 'POST'])
 def student_register():
     if request.method == 'POST':
@@ -130,9 +126,8 @@ def student_login():
     if request.method == 'POST':
         email = request.form['email']
         password = request.form['password']
-
         db = get_db()
-        user = db.execute('SELECT * FROM users WHERE email = ? AND is_warden = 0', (email,)).fetchone()
+        user = db.execute('SELECT * FROM users WHERE email=? AND is_warden=0', (email,)).fetchone()
         if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             session['user_name'] = user['name']
@@ -160,9 +155,11 @@ def add_complaint():
         description = request.form['description']
         proof_file = request.files.get('proof')
         filename = None
+
         if proof_file and allowed_file(proof_file.filename):
             filename = secure_filename(proof_file.filename)
             proof_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+
         db = get_db()
         db.execute(
             'INSERT INTO complaints (student_id, title, category, description, proof_file) VALUES (?, ?, ?, ?, ?)',
@@ -171,6 +168,7 @@ def add_complaint():
         db.commit()
         flash('Complaint submitted successfully!', 'success')
         return redirect(url_for('my_complaints'))
+
     return render_template('add_complaint.html')
 
 
@@ -195,7 +193,6 @@ def uploaded_file(filename):
 def student_profile():
     if 'user_id' not in session or session.get('is_warden'):
         return redirect(url_for('student_login'))
-
     db = get_db()
     user = get_user_by_id(session['user_id'])
     if request.method == 'POST':
@@ -216,7 +213,7 @@ def student_profile():
     return render_template('profile.html', user=user, title="Student Profile")
 
 
-# --- Warden ---
+# ---------- Warden ----------
 @app.route('/warden/login', methods=['GET', 'POST'])
 def warden_login():
     if request.method == 'POST':
@@ -319,10 +316,9 @@ def warden_profile():
 @app.route('/logout')
 def logout():
     session.clear()
-    flash("Logged out successfully.", "info")
     return redirect(url_for('index'))
 
 
 # ------------------ Run App ------------------
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
