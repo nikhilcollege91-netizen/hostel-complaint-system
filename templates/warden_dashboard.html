@@ -28,7 +28,6 @@
                     <th>Title</th>
                     <th>Category</th>
                     <th>Description</th>
-                    <th>Proof</th>
                     <th>Status</th>
                     <th>Warden's Remark</th>
                 </tr>
@@ -40,13 +39,6 @@
                         <td>{{ complaint.title }}</td>
                         <td>{{ complaint.category }}</td>
                         <td><p class="description-cell">{{ complaint.description }}</p></td>
-                        <td>
-                            {% if complaint.proof_file %}
-                                <a href="{{ url_for('uploaded_file', filename=complaint.proof_file) }}" target="_blank">View</a>
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </td>
                         <td>
                             <form action="{{ url_for('update_status', id=complaint.id) }}" method="POST">
                                 <select name="status" onchange="this.form.submit()">
