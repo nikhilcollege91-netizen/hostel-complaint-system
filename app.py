@@ -297,8 +297,9 @@ def warden_analytics():
     db = get_db()
     
     # Status analytics
-    status_data = db.execute("SELECT status, COUNT(*) as count FROM complaints GROUP BY status").
-    fetchall()
+    # --- THIS IS THE FIXED LINE ---
+    status_data = db.execute("SELECT status, COUNT(*) as count FROM complaints GROUP BY status").fetchall()
+    
     status_counts = {
         'Pending': 0,
         'In Progress': 0,
