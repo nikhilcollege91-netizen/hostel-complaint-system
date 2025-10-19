@@ -6,7 +6,7 @@
         <a class="nav-brand" href="{{ url_for('student_dashboard') }}">Student Portal</a>
         <ul class="nav-links">
             <li><a href="{{ url_for('my_complaints') }}">📋 My Complaints</a></li>
-            <li><a href="{{ url_for('student_profile') }}">👤 Profile</a></li>
+            <li><a href="{{ url_for('profile') }}">👤 Profile</a></li>
             <li><a href="{{ url_for('logout') }}">🚪 Logout</a></li>
         </ul>
     </div>
@@ -15,7 +15,7 @@
 <div class="container">
     <div class="card form-card">
         <h2>➕ Add a New Complaint</h2>
-        <form method="POST" id="complaint-form">
+        <form method="POST" enctype="multipart/form-data" id="complaint-form">
             <div class="form-group">
                 <label for="title">Title</label>
                 <input type="text" id="title" name="title" required>
@@ -35,6 +35,10 @@
             <div class="form-group">
                 <label for="description">Description</label>
                 <textarea id="description" name="description" rows="5" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="proof">Upload Proof (Image/Video/Audio)</label>
+                <input type="file" id="proof" name="proof">
             </div>
             <button type="submit" class="btn btn-primary btn-glow">Submit Complaint</button>
         </form>
